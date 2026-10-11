@@ -787,7 +787,7 @@ fn op_import_sync<'s, 'i>(
         .push(module_id);
       let result = module_map_rc.mod_evaluate_sync(scope, module_id);
       module_map_rc.import_sync_eval_stack.borrow_mut().pop();
-      // Bento patch (third_party/deno_core/BENTO_PATCH.md): keep the original exception.
+      // Bento patch (PATCHES.md): keep the original exception.
       if result.is_err()
         && matches!(module.get_status(), v8::ModuleStatus::Errored)
       {
@@ -862,7 +862,7 @@ fn op_import_sync_with_source<'s, 'i>(
     .get_module(scope, module_id)
     .expect("Module must exist");
 
-  // Bento patch (third_party/deno_core/BENTO_PATCH.md): keep the original exception.
+  // Bento patch (PATCHES.md): keep the original exception.
   if evaluation.is_err()
     && matches!(module.get_status(), v8::ModuleStatus::Errored)
   {
