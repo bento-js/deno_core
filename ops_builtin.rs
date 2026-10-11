@@ -787,21 +787,19 @@ fn op_import_sync<'s, 'i>(
         .push(module_id);
       let result = module_map_rc.mod_evaluate_sync(scope, module_id);
       module_map_rc.import_sync_eval_stack.borrow_mut().pop();
+      // Bento patch (third_party/deno_core/BENTO_PATCH.md): keep the original exception.
+      if result.is_err()
+        && matches!(module.get_status(), v8::ModuleStatus::Errored)
+      {
+        return Ok(rethrow_module_exception(scope, module));
+      }
       result?;
     }
     v8::ModuleStatus::Evaluated => {
       // OK
     }
     v8::ModuleStatus::Errored => {
-      return Err(
-        CoreErrorKind::Js(exception_to_err(
-          scope,
-          module.get_exception(),
-          false,
-          false,
-        ))
-        .into_box(),
-      );
+      return Ok(rethrow_module_exception(scope, module));
     }
   }
 
@@ -858,11 +856,19 @@ fn op_import_sync_with_source<'s, 'i>(
         .into_box()
     })?;
 
-  module_map_rc.mod_evaluate_sync(scope, module_id)?;
+  let evaluation = module_map_rc.mod_evaluate_sync(scope, module_id);
 
   let module = module_map_rc
     .get_module(scope, module_id)
     .expect("Module must exist");
+
+  // Bento patch (third_party/deno_core/BENTO_PATCH.md): keep the original exception.
+  if evaluation.is_err()
+    && matches!(module.get_status(), v8::ModuleStatus::Errored)
+  {
+    return Ok(rethrow_module_exception(scope, module));
+  }
+  evaluation?;
 
   let namespace = module.get_module_namespace().cast::<v8::Object>();
 
@@ -882,4 +888,16 @@ fn op_import_sync_with_source<'s, 'i>(
   } else {
     Ok(v8::Local::new(scope, namespace).into())
   }
+}
+
+/// Bento patch: rethrows a failed module's own exception so `require()` of an ES module
+/// surfaces the original error object, as Node does, instead of a serialized copy that loses
+/// its class (a permission denial would otherwise read as an ordinary uncaught error).
+fn rethrow_module_exception<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  module: v8::Local<'s, v8::Module>,
+) -> v8::Local<'s, v8::Value> {
+  let exception = module.get_exception();
+  scope.throw_exception(exception);
+  v8::undefined(scope).into()
 }
